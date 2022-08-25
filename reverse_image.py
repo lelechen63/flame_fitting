@@ -1,4 +1,5 @@
 
+from genericpath import exists
 import torch
 import torchvision
 import torchvision.transforms as transforms
@@ -7,6 +8,7 @@ import matplotlib.pyplot as plt
 from skimage.transform import resize
 import face_alignment
 
+import pickle
 import torch.nn.functional as F
 import torch.nn as nn
 import numpy as np
@@ -15,20 +17,18 @@ import imageio
 from PIL import Image
 import cv2
 from model import BiSeNet
-
+import os
 import sys
 sys.path.append('./models/')
 from FLAME import FLAME, FLAMETex
 from Flamerenderer import FlameRenderer as Renderer
 import util
 torch.backends.cudnn.benchmark = True
-from tl2.tl2_utils import read_image_list_from_files
-sys.path.append('../scripts/')
-from dataset_tool import *
-sys.path.append('../utils/')
+# sys.path.append('../scripts/')
+# from dataset_tool import *
 import tensor_util
 import argparse
-
+from tqdm import tqdm
 import datetime
 import pathlib
 #----------------------------------------------------------------------------
@@ -146,7 +146,6 @@ class PhotometricFitting(object):
         )
 
         gt_landmark = landmarks
-
         # rigid fitting of pose and camera with 51 static face landmarks,
         # this is due to the non-differentiable attribute of contour landmarks trajectory
         for k in range(int(itt * 0.3)):
@@ -191,7 +190,7 @@ class PhotometricFitting(object):
                     grid_image = (grid.numpy().transpose(1, 2, 0).copy() * 255)[:, :, [2, 1, 0]]
                     grid_image = np.minimum(np.maximum(grid_image, 0), 255).astype(np.uint8)
                     cv2.imwrite('{}/{}.jpg'.format(savefolder, k), grid_image)
-
+                    print ('{}/{}.jpg'.format(savefolder, k),'!!!!!!!!!!!!')
         # non-rigid fitting of all the parameters with 68 face landmarks, photometric loss and regularization terms.
         for k in range(int(itt * 0.3), itt):
             losses = {}
@@ -277,12 +276,17 @@ class PhotometricFitting(object):
         image = image.transpose(2, 0, 1)
         images.append(torch.from_numpy(image[None, :, :, :]).to(self.device))
 
-        # image_mask = self.get_front_face_mask(img)
-        # image_mask = image_mask[..., None].astype('float32')
-        # image_mask = image_mask.transpose(2, 0, 1)
+        if imgmask_path is None:
+            image_mask = self.get_front_face_mask(img)
+            image_mask = image_mask[..., None].astype('float32')
+            print (image_mask.shape)
+            image_mask = np.expand_dims(cv2.resize(image_mask, (config.image_size,self.config.image_size), interpolation = cv2.INTER_AREA), axis = 0)
+
+            # image_mask = image_mask.transpose(2, 0, 1)
         # np.save(imgmask_path, image_mask)
-        # image_mask = np.load(imgmask_path)
-        image_mask = np.expand_dims(cv2.resize(np.load(imgmask_path).transpose(1,2,0), (config.image_size,self.config.image_size), interpolation = cv2.INTER_AREA), axis = 0)
+        else:
+            image_mask = np.load(imgmask_path)
+            image_mask = np.expand_dims(cv2.resize(np.load(imgmask_path).transpose(1,2,0), (config.image_size,self.config.image_size), interpolation = cv2.INTER_AREA), axis = 0)
 
         image_masks.append(torch.from_numpy(image_mask[None, :, :, :]).to(self.device))
 
@@ -295,7 +299,7 @@ class PhotometricFitting(object):
         image_masks = torch.cat(image_masks, dim=0)
         landmarks = torch.cat(landmarks, dim=0)
         # optimize
-        single_params = self.optimize(images, landmarks , image_masks, savefolder= vis_folder)
+        single_params = self.optimize(images, landmarks , image_masks, savefolder= vis_folder, show = True)
         # self.render.save_obj(filename=savefile[:-4]+'.obj',
         #                      vertices=torch.from_numpy(single_params['verts'][0]).to(self.device),
         #                      textures=torch.from_numpy(single_params['albedos'][0]).to(self.device)
@@ -335,20 +339,21 @@ config = util.dict2obj(config)
 
 
 def demo(config):
-    image_path = "/home/us000218/lelechen/github/CIPS-3D/results/model_interpolation/0.png"
+    image_path = '/nfs/STG/CodecAvatar/lelechen/libingzeng/EG3D_Inversion/dataset_preprocessing/ffhq/preprocess_image_local2/realign1500_local/cropped_images/2.png_align1500.png'
+    # image_path = '/nfs/STG/CodecAvatar/lelechen/libingzeng/Consistent_Facial_Landmarks/temp/2.png'
+    # image_path = "/nfs/STG/CodecAvatar/lelechen/libingzeng/EG3D_Inversion/dataset_preprocessing/ffhq/preprocess_image_local2/realign1500_local/2.png_align1500.png"
     img = cv2.imread(image_path)
-    img = cv2.resize(img, (512,512), interpolation = cv2.INTER_AREA)
-
     
-    config.savefolder=  '/home/us000218/lelechen/github/CIPS-3D/photometric_optimization/gg'        
-    
+    img = cv2.resize(img, (256,256), interpolation = cv2.INTER_AREA)
+    config.savefolder=  './gg_512'        
+    os.makedirs(config.savefolder, exist_ok= True)
     k =  parse_args().k
     gpuid = k % 7
     # gpuid = 6
     config.batch_size = 1
     fitting = PhotometricFitting(config, device="cuda:%d"%gpuid)
 
-    params = fitting.run(img, vis_folder = config.savefolder )
+    params = fitting.run(img, vis_folder = config.savefolder, config=config )
               
 
 
@@ -503,4 +508,5 @@ def varify(config = config, parse = parse):
         cv2.imwrite(root + '/tmp/%d.png'%idx, img)
 
 # varify()
-main_ffhq_stylenerf()
+# main_ffhq_stylenerf()
+demo(config)
