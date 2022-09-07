@@ -24,8 +24,7 @@ from FLAME import FLAME, FLAMETex
 from Flamerenderer import FlameRenderer as Renderer
 import util
 torch.backends.cudnn.benchmark = True
-# sys.path.append('../scripts/')
-# from dataset_tool import *
+
 import tensor_util
 import argparse
 from tqdm import tqdm
@@ -42,7 +41,7 @@ def parse_args():
                      default=0)
     parser.add_argument("--imgsize",
                      type=int,
-                     default=256)
+                     default=512)
     return parser.parse_args()
 
 parse = parse_args()
@@ -263,7 +262,7 @@ class PhotometricFitting(object):
         }
         return single_params
 
-    def run(self, img, vis_folder, imgmask_path = None, config = None ):
+    def run(self, img, vis_folder, imgmask_path = None, config = None, imglmark = None ):
         # The implementation is potentially able to optimize with images(batch_size>1),
         # here we show the example with a single image fitting
         images = []
@@ -289,8 +288,15 @@ class PhotometricFitting(object):
             image_mask = np.expand_dims(cv2.resize(np.load(imgmask_path).transpose(1,2,0), (config.image_size,self.config.image_size), interpolation = cv2.INTER_AREA), axis = 0)
 
         image_masks.append(torch.from_numpy(image_mask[None, :, :, :]).to(self.device))
-
-        landmark = self.get_face_landmarks(img).astype(np.float32)
+        if imglmark is None:
+            landmark = self.get_face_landmarks(img).astype(np.float32)
+        else:
+            print (imglmark)
+            with open(imglmark, 'rb') as f:
+                landmark = np.load(f, allow_pickle=True).tolist()['point']
+            print(landmark)
+            landmark = landmark.astype(np.float32)
+        print (landmark.shape,'!!!!!')
         landmark[:, 0] = landmark[:, 0] / float(image.shape[2]) * 2 - 1
         landmark[:, 1] = landmark[:, 1] / float(image.shape[1]) * 2 - 1
         landmarks.append(torch.from_numpy(landmark)[None, :, :].float().to(self.device))
@@ -339,12 +345,13 @@ config = util.dict2obj(config)
 
 
 def demo(config):
-    image_path = '/nfs/STG/CodecAvatar/lelechen/libingzeng/EG3D_Inversion/dataset_preprocessing/ffhq/preprocess_image_local2/realign1500_local/cropped_images/2.png_align1500.png'
+    image_path = '/nfs/STG/CodecAvatar/lelechen/libingzeng/EG3D_Inversion/dataset_preprocessing/ffhq/DAD-3DHeads-Datasets/val_lm2d/preprocess_images_68/realign1500_lm/00e84619-0bdf-4181-af4a-cf5a27950a4d_align1500_transformed_1500.png'
+    lmark_path = '/nfs/STG/CodecAvatar/lelechen/libingzeng/EG3D_Inversion/dataset_preprocessing/ffhq/DAD-3DHeads-Datasets/val_lm2d/preprocess_images_68/realign1500_lm/00e84619-0bdf-4181-af4a-cf5a27950a4d_align1500_transformed_1500_lm2d_points_cropped.npy'
     # image_path = '/nfs/STG/CodecAvatar/lelechen/libingzeng/Consistent_Facial_Landmarks/temp/2.png'
     # image_path = "/nfs/STG/CodecAvatar/lelechen/libingzeng/EG3D_Inversion/dataset_preprocessing/ffhq/preprocess_image_local2/realign1500_local/2.png_align1500.png"
     img = cv2.imread(image_path)
     
-    img = cv2.resize(img, (256,256), interpolation = cv2.INTER_AREA)
+    img = cv2.resize(img, (512,512), interpolation = cv2.INTER_AREA)
     config.savefolder=  './gg_512'        
     os.makedirs(config.savefolder, exist_ok= True)
     k =  parse_args().k
@@ -353,7 +360,7 @@ def demo(config):
     config.batch_size = 1
     fitting = PhotometricFitting(config, device="cuda:%d"%gpuid)
 
-    params = fitting.run(img, vis_folder = config.savefolder, config=config )
+    params = fitting.run(img, vis_folder = config.savefolder, config=config, imglmark=lmark_path )
               
 
 
@@ -501,12 +508,4 @@ def varify(config = config, parse = parse):
                 device = device
                 )
         genimage = cv2.cvtColor(genimage, cv2.COLOR_RGB2BGR)
-        gtimage = cv2.imread(img_p)
-        gtimage = cv2.resize(gtimage, (config.image_size,config.image_size), interpolation = cv2.INTER_AREA)
-
-        img = cv2.hconcat([genimage, gtimage])
-        cv2.imwrite(root + '/tmp/%d.png'%idx, img)
-
-# varify()
-# main_ffhq_stylenerf()
-demo(config)
+        gtimage = cv2.imr
