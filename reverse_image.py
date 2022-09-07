@@ -96,9 +96,6 @@ class PhotometricFitting(object):
         self.render = Renderer(self.image_size, obj_filename=mesh_file).to(self.device)
 
     def get_face_landmarks(self, img):
-        # img = imageio.imread(image_path)
-        # print (img.shape)
-        # print (img,'=========')
         preds = self.fa.get_landmarks(img)
         if len(preds) == 0:
             print("ERROR: no face detected!")
@@ -108,7 +105,6 @@ class PhotometricFitting(object):
     def get_front_face_mask(self, img):
         with torch.no_grad():
             img = Image.fromarray(img)
-            # img = Image.open(image_path)
             w, h = img.size
             image = img.resize((512, 512), Image.BILINEAR)
             img = self.to_tensor(image)
@@ -188,9 +184,9 @@ class PhotometricFitting(object):
                     grid = torch.cat(list(grids.values()), 1)
                     grid_image = (grid.numpy().transpose(1, 2, 0).copy() * 255)[:, :, [2, 1, 0]]
                     grid_image = np.minimum(np.maximum(grid_image, 0), 255).astype(np.uint8)
+                    grid_image = cv2.cvtColor(grid_image, cv2.COLOR_RGB2BGR)
                     cv2.imwrite('{}/{}.jpg'.format(savefolder, k), grid_image)
-                    print ('{}/{}.jpg'.format(savefolder, k),'!!!!!!!!!!!!')
-        # non-rigid fitting of all the parameters with 68 face landmarks, photometric loss and regularization terms.
+         # non-rigid fitting of all the parameters with 68 face landmarks, photometric loss and regularization terms.
         for k in range(int(itt * 0.3), itt):
             losses = {}
             vertices, landmarks2d, landmarks3d_save = self.flame(shape_params=shape, expression_params=exp, pose_params=pose)
@@ -291,12 +287,9 @@ class PhotometricFitting(object):
         if imglmark is None:
             landmark = self.get_face_landmarks(img).astype(np.float32)
         else:
-            print (imglmark)
             with open(imglmark, 'rb') as f:
                 landmark = np.load(f, allow_pickle=True).tolist()['point']
-            print(landmark)
             landmark = landmark.astype(np.float32)
-        print (landmark.shape,'!!!!!')
         landmark[:, 0] = landmark[:, 0] / float(image.shape[2]) * 2 - 1
         landmark[:, 1] = landmark[:, 1] / float(image.shape[1]) * 2 - 1
         landmarks.append(torch.from_numpy(landmark)[None, :, :].float().to(self.device))
@@ -345,25 +338,22 @@ config = util.dict2obj(config)
 
 
 def demo(config):
-    image_path = '/nfs/STG/CodecAvatar/lelechen/libingzeng/EG3D_Inversion/dataset_preprocessing/ffhq/DAD-3DHeads-Datasets/val_lm2d/preprocess_images_68/realign1500_lm/00e84619-0bdf-4181-af4a-cf5a27950a4d_align1500_transformed_1500.png'
+    image_path = '/nfs/STG/CodecAvatar/lelechen/libingzeng/EG3D_Inversion/dataset_preprocessing/ffhq/DAD-3DHeads-Datasets/val_lm2d/preprocess_images_68/realign1500/cropped_images/00e84619-0bdf-4181-af4a-cf5a27950a4d_align1500.png'
     lmark_path = '/nfs/STG/CodecAvatar/lelechen/libingzeng/EG3D_Inversion/dataset_preprocessing/ffhq/DAD-3DHeads-Datasets/val_lm2d/preprocess_images_68/realign1500_lm/00e84619-0bdf-4181-af4a-cf5a27950a4d_align1500_transformed_1500_lm2d_points_cropped.npy'
     # image_path = '/nfs/STG/CodecAvatar/lelechen/libingzeng/Consistent_Facial_Landmarks/temp/2.png'
     # image_path = "/nfs/STG/CodecAvatar/lelechen/libingzeng/EG3D_Inversion/dataset_preprocessing/ffhq/preprocess_image_local2/realign1500_local/2.png_align1500.png"
+    config.savefolder=  './gg_512' 
+
     img = cv2.imread(image_path)
-    
     img = cv2.resize(img, (512,512), interpolation = cv2.INTER_AREA)
-    config.savefolder=  './gg_512'        
+        
     os.makedirs(config.savefolder, exist_ok= True)
     k =  parse_args().k
     gpuid = k % 7
-    # gpuid = 6
     config.batch_size = 1
     fitting = PhotometricFitting(config, device="cuda:%d"%gpuid)
-
     params = fitting.run(img, vis_folder = config.savefolder, config=config, imglmark=lmark_path )
               
-
-
 
 def main_ffhq_cips3d(config,start_idx =1):
     # image_path = "./test_images/69956.png"
@@ -508,4 +498,12 @@ def varify(config = config, parse = parse):
                 device = device
                 )
         genimage = cv2.cvtColor(genimage, cv2.COLOR_RGB2BGR)
-        gtimage = cv2.imr
+        gtimage = cv2.imread(img_p)
+        gtimage = cv2.resize(gtimage, (config.image_size,config.image_size), interpolation = cv2.INTER_AREA)
+
+        img = cv2.hconcat([genimage, gtimage])
+        cv2.imwrite(root + '/tmp/%d.png'%idx, img)
+
+# varify()
+# main_ffhq_stylenerf()
+demo(config)
