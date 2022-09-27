@@ -76,11 +76,12 @@ def open_image_folder(source, max_images = None):
     for i in tmp:
         if i[-3:] == 'png':
             input_images.append(i)
+    input_images = sorted(input_images)
     if max_images is not None:
         max_idx = min(len(input_images), max_images)
     else:
         max_idx = len(input_images)
-    return max_idx, input_images
+    return max_idx, input_images[:max_idx]
 
 
 class PhotometricFitting(object):
@@ -140,9 +141,11 @@ class PhotometricFitting(object):
         return msk # (h,w), 0~1
 
     def optimize(self, images, landmarks, image_masks, savefolder=None, show = False, shape = None, tex = None, exp = None, pose = None, cam = None, lights = None ):
-        itt = 4000
+        itt = 1000
         bz = images.shape[0]
         opt_group = []
+        if savefolder is not None:
+            os.makedirs(savefolder, exist_ok= True)
         if shape is None:
             shape = nn.Parameter(torch.zeros(bz, self.config.shape_params).float().to(self.device))
             opt_group.append(shape)
@@ -262,6 +265,7 @@ class PhotometricFitting(object):
                     grids = {}
                     visind = range(bz)  # [0]
                     grids['images'] = torchvision.utils.make_grid(images[visind]).detach().cpu()
+                    print(grids['images'].shape)
                     grids['landmarks_gt'] = torchvision.utils.make_grid(
                         util.tensor_vis_landmarks(images[visind], landmarks[visind]))
                     grids['landmarks2d'] = torchvision.utils.make_grid(
@@ -277,7 +281,7 @@ class PhotometricFitting(object):
                     grid = torch.cat(list(grids.values()), 1)
                     grid_image = (grid.numpy().transpose(1, 2, 0).copy() * 255)[:, :, [2, 1, 0]]
                     grid_image = np.minimum(np.maximum(grid_image, 0), 255).astype(np.uint8)
-
+                    print ('{}/{}.jpg'.format(savefolder, k))
                     cv2.imwrite('{}/{}.jpg'.format(savefolder, k), grid_image)
 
         single_params = {
@@ -402,17 +406,14 @@ def main_ffhq(config):
     for idx, image in pbar:
         print (image)
         t_f = int(int(image[:-4]) / 1000)
-
         flame_path = config.savefolder +'%02d000/'%(t_f) + image[:-4] + '/flame_p.pickle'
         if os.path.exists(flame_path ):
             util.check_mkdir(config.savefolder + image[:-4])
             img = cv2.imread(config.imgfolder +'/' + image )
-            # .astype(np.float32) / 255.
-            # img = img[:, :, [2, 1, 0]].transpose(2, 0, 1)
             with open(flame_path, 'rb') as f:
                 flame_p = pickle.load(f, encoding='latin1')
 
-            params = fitting.run(img, vis_folder = config.savefolder + image[:-4], existing_params = flame_p , config = config)
+            params = fitting.run(img, vis_folder = config.savefolder + '%02d000/'%(t_f) + image[:-4], existing_params = flame_p , config = config)
             
 
 def varify(config = config, parse = parse):
